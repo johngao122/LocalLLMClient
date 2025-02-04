@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, Response, stream_with_context
 from typing import Optional
-from ..llm.model import LLMModel
-from ..utils.errors import ModelError
+from python.llm.model import LLMModel
+from python.utils.errors import ModelError
 import logging
 
 api = Blueprint("api", __name__)
@@ -29,6 +29,7 @@ def generate():
         return jsonify({"error": "Missing prompt"}), 400
 
     try:
+        logger.info(f"Received generation request with prompt: {data['prompt']}")
         stream = data.get("stream", False)
 
         params = {
@@ -38,6 +39,8 @@ def generate():
             "stream": stream,
         }
 
+        logger.info(f"Starting generation with params: {params}")
+
         if stream:
 
             def generate_stream():
@@ -46,21 +49,23 @@ def generate():
                         text = chunk["choices"][0]["text"]
                         yield text
                 except Exception as e:
-                    logger.error(f"Failed to generate response: {e}")
+                    logger.error(f"Stream generation error: {e}", exc_info=True)
                     raise ModelError(f"Failed to generate response: {e}")
 
             return Response(
                 stream_with_context(generate_stream()), mimetype="text/event-stream"
             )
 
+        logger.info("Calling model.generate...")
         response = model.generate(data["prompt"], **params)
+        logger.info(f"Generation complete. Response: {response}")
         return jsonify(response), 200
 
     except ModelError as e:
-        logger.error(f"Failed to generate response: {e}")
+        logger.error(f"Model error during generation: {e}", exc_info=True)
         return jsonify({"generation error": str(e)}), 500
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error during generation: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

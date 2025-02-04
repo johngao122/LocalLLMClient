@@ -1,7 +1,7 @@
 from typing import Dict, Optional
 import logging
-from llama_cpp import llama
-from ...python.utils.errors import ModelError
+from llama_cpp import Llama
+from python.utils.errors import ModelError
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +11,8 @@ class LLMModel:
         self,
         model_path: str,
         n_ctx: int = 2048,
-        n_threads: Optional[int] = None,
-        n_gpu_layers: Optional[int] = None,
+        n_threads: int = 4,
+        n_gpu_layers: int = 0,
     ):
         """
         Initialization
@@ -26,11 +26,12 @@ class LLMModel:
         """
 
         try:
-            self.model = llama(
-                model=model_path,
+            self.model = Llama(
+                model_path=model_path,
                 n_ctx=n_ctx,
                 n_threads=n_threads,
-                n_gpu_layers=n_gpu_layers,
+                n_gpu_layers=-1,  # Change depending on hardware
+                verbose=True,
             )
             logger.info(f"Loaded model {model_path}")
         except Exception as e:

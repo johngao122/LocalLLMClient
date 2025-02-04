@@ -2,12 +2,11 @@ import os
 import logging
 from flask import Flask
 from flask_cors import CORS
-from api.routes import api, init_model
-from utils.errors import ConfigError
-
+from python.api.routes import api, init_model
+from python.utils.errors import ConfigError
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
@@ -23,9 +22,16 @@ def create_app():
 
 def main():
     try:
-        model_path = os.environ.get("LLM_MODEL_PATH")
-        if not model_path:
-            raise ConfigError("LLM_MODEL_PATH is not set")
+
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        model_name = os.environ.get("MODEL_NAME", "DeepSeek-R1-Distill-Qwen")
+        model_path = os.path.join(project_root, "models", f"{model_name}.gguf")
+        logger.info(f"Model path: {model_path}")
+
+        logger.debug(f"Attempting to load model from: {model_path}")
+
+        if not os.path.exists(model_path):
+            raise ConfigError(f"Model file not found at: {model_path}")
         port = int(os.environ.get("PORT", 5000))
         host = os.environ.get("HOST", "127.0.0.1")
 
@@ -37,14 +43,14 @@ def main():
 
         app = create_app()
         logger.info(f"Starting server on {host}:{port}")
-        app.run(host=host, port=port)
+        app.run(host=host, port=port, debug=True)
 
     except ConfigError as e:
         logger.error(f"Failed to start server: {e}")
         exit(1)
 
     except Exception as e:
-        logger.error(f"Failed to start server: {e}")
+        logger.error(f"Failed to start server: {e}", exc_info=True)
         exit(1)
 
 

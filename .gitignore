@@ -38,3 +38,6 @@ Thumbs.db
 *.env
 config.json
 credentials.json
+
+# Models
+*.gguf
