@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ChatMessages } from "./ChatBubble";
-import type { ChatMessage } from "./ChatBubble";
+import { ExtendedChatMessage, ChatMessageContent } from "./ThoughtProcess";
 
 interface ServerStatusProps {
     onStatusChange: (isOnline: boolean) => void;
@@ -116,11 +116,14 @@ const ServerStatus = ({ onStatusChange }: ServerStatusProps) => {
 
 const ChatInterface = () => {
     const [isServerOnline, setIsServerOnline] = useState(false);
-    const [messages, setMessages] = useState<ChatMessage[]>([
+    const [messages, setMessages] = useState<ExtendedChatMessage[]>([
         { role: "assistant", content: "Hello! How can I assist you today?" },
     ]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [thoughtStartTime, setThoughtStartTime] = useState<number | null>(
+        null
+    );
     const chatRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -136,11 +139,25 @@ const ChatInterface = () => {
         e?.preventDefault();
         if (!input.trim() || isLoading) return;
 
-        const userMessage: ChatMessage = { role: "user", content: input };
-        const newMessages = [...messages, userMessage];
-        setMessages(newMessages);
+        const userMessage: ExtendedChatMessage = {
+            role: "user",
+            content: input,
+        };
+
+        setMessages((prev) => [...prev, userMessage]);
         setInput("");
         setIsLoading(true);
+        setThoughtStartTime(Date.now());
+
+        // Add placeholder for assistant's response
+        const placeholderMessage: ExtendedChatMessage = {
+            role: "assistant",
+            content: {
+                thought: "",
+                response: "",
+            },
+        };
+        setMessages((prev) => [...prev, placeholderMessage]);
 
         try {
             const response = await fetch("http://127.0.0.1:5000/api/generate", {
@@ -150,33 +167,102 @@ const ChatInterface = () => {
                 },
                 body: JSON.stringify({
                     prompt: input,
-                    stream: false,
+                    stream: true,
                     max_tokens: 4096,
                     temperature: 0.7,
                 }),
             });
 
-            const data = await response.json();
-
-            if (response.ok) {
-                const assistantMessage: ChatMessage = {
-                    role: "assistant",
-                    content: data.text || data.choices?.[0]?.text,
-                };
-                setMessages([...newMessages, assistantMessage]);
-            } else {
-                throw new Error(data.error || "Failed to generate response");
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
+
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            let accumulatedThought = "";
+            let accumulatedResponse = "";
+            let isThoughtPhase = true;
+
+            while (reader) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split("\n");
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        const data = line.slice(5).trim();
+                        if (data === "[DONE]") break;
+                        if (!data) continue;
+
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (!parsed.choices?.[0]?.text) continue;
+
+                            const newText = parsed.choices[0].text;
+
+                            // Check for thought process completion
+                            if (newText.includes("</think>")) {
+                                const parts = newText.split("</think>");
+                                accumulatedThought += parts[0];
+                                isThoughtPhase = false;
+
+                                // If there's content after </think>, it's part of the response
+                                if (parts.length > 1 && parts[1].trim()) {
+                                    accumulatedResponse += parts[1].trim();
+                                }
+                            } else {
+                                // Add content to either thought or response based on phase
+                                if (isThoughtPhase) {
+                                    accumulatedThought += newText;
+                                } else {
+                                    accumulatedResponse += newText;
+                                }
+                            }
+
+                            const thoughtDuration = thoughtStartTime
+                                ? Math.round(
+                                      (Date.now() - thoughtStartTime) / 1000
+                                  )
+                                : null;
+
+                            setMessages((prev) => {
+                                const newMessages = [...prev];
+                                const lastMessage =
+                                    newMessages[newMessages.length - 1];
+                                if (lastMessage.role === "assistant") {
+                                    lastMessage.content = {
+                                        thought: accumulatedThought,
+                                        response: accumulatedResponse,
+                                    } as ChatMessageContent;
+                                }
+                                return newMessages;
+                            });
+                        } catch (e) {
+                            console.error("Error parsing SSE data:", e);
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            reader?.releaseLock();
         } catch (error) {
             console.error("Error:", error);
-            const errorMessage: ChatMessage = {
-                role: "assistant",
-                content:
-                    "I apologize, but I encountered an error generating a response. Please try again.",
-            };
-            setMessages([...newMessages, errorMessage]);
+            setMessages((prev) => [
+                ...prev.slice(0, -1),
+                {
+                    role: "assistant",
+                    content: {
+                        response:
+                            "I apologize, but I encountered an error generating a response. Please try again.",
+                    },
+                },
+            ]);
         } finally {
             setIsLoading(false);
+            setThoughtStartTime(null);
         }
     };
 

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, Response, stream_with_context
+from flask import Blueprint, json, request, jsonify, Response, stream_with_context
 from typing import Optional
 from python.llm.model import LLMModel
 from python.utils.errors import ModelError
@@ -39,33 +39,32 @@ def generate():
             "stream": stream,
         }
 
-        logger.info(f"Starting generation with params: {params}")
-
         if stream:
 
             def generate_stream():
                 try:
                     for chunk in model.generate(data["prompt"], **params):
-                        text = chunk["choices"][0]["text"]
-                        yield text
+                        yield f"data: {json.dumps(chunk)}\n\n"
                 except Exception as e:
                     logger.error(f"Stream generation error: {e}", exc_info=True)
-                    raise ModelError(f"Failed to generate response: {e}")
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                finally:
+                    yield "data: [DONE]\n\n"
 
             return Response(
-                stream_with_context(generate_stream()), mimetype="text/event-stream"
+                stream_with_context(generate_stream()),
+                mimetype="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                },
             )
 
-        logger.info("Calling model.generate...")
         response = model.generate(data["prompt"], **params)
-        logger.info(f"Generation complete. Response: {response}")
         return jsonify(response), 200
 
-    except ModelError as e:
-        logger.error(f"Model error during generation: {e}", exc_info=True)
-        return jsonify({"generation error": str(e)}), 500
     except Exception as e:
-        logger.error(f"Unexpected error during generation: {e}", exc_info=True)
+        logger.error(f"Error during generation: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

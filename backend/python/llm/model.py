@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 import logging
-from llama_cpp import Llama
+from llama_cpp import Generator, Llama
 from python.utils.errors import ModelError
 
 logger = logging.getLogger(__name__)
@@ -42,25 +42,11 @@ class LLMModel:
         self,
         prompt: str,
         max_tokens: int = 4096,
-        temperature: float = 0.7,
+        temperature: float = 0.3,
         top_p: float = 0.95,
         stop: Optional[list[str]] = None,
         stream: bool = False,
-    ) -> Dict:
-        """Text Generation
-
-        Args:
-            prompt: Input text
-            max_tokens: Maximum number of tokens to generate
-            temperature: Sampling temperature
-            top_p: Nucleus sampling parameter
-            stop: List of strings to stop generation at
-            stream: Whether to stream the response
-
-        Returns:
-            Dictionary containing the generated text and metadata
-        """
-
+    ) -> Generator[Dict, None, None]:
         try:
             response = self.model(
                 prompt,
@@ -70,9 +56,23 @@ class LLMModel:
                 stop=stop,
                 stream=stream,
             )
-            if stream:
-                return response
 
+            if stream:
+                # For streaming, yield each chunk as it comes
+                for chunk in response:
+                    yield {
+                        "choices": [
+                            {
+                                "text": chunk["choices"][0]["text"],
+                                "finish_reason": chunk["choices"][0].get(
+                                    "finish_reason"
+                                ),
+                            }
+                        ]
+                    }
+                return
+
+            # For non-streaming, return the complete response
             return {
                 "text": response["choices"][0]["text"],
                 "usage": {

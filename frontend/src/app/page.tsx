@@ -1,5 +1,6 @@
 import Image from "next/image";
 import ChatInterface from "@/components/ChatInterface";
+import "katex/dist/katex.min.css";
 
 export default function Home() {
     return (
