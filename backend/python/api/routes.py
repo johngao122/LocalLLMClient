@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 model: Optional[LLMModel] = None
 
 
-def init_model(model_path: str, n_ctx: int = 2048, n_threads: Optional[int] = None):
+def init_model(model_path: str, n_ctx: int = 4096, n_threads: Optional[int] = None):
     global model
     try:
         model = LLMModel(model_path=model_path, n_ctx=n_ctx, n_threads=n_threads)
@@ -33,7 +33,7 @@ def generate():
         stream = data.get("stream", False)
 
         params = {
-            "max_tokens": data.get("max_tokens", 512),
+            "max_tokens": data.get("max_tokens", 4096),
             "temperature": data.get("temperature", 0.7),
             "top_p": data.get("top_p", 0.95),
             "stream": stream,

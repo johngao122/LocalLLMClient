@@ -37,7 +37,7 @@ def main():
 
         init_model(
             model_path=model_path,
-            n_ctx=int(os.environ.get("LLM_CONTEXT_LENGTH", "2048")),
+            n_ctx=int(os.environ.get("LLM_CONTEXT_LENGTH", "4096")),
             n_threads=int(os.environ.get("LLM_THREADS", "4")),
         )
 

@@ -151,7 +151,7 @@ const ChatInterface = () => {
                 body: JSON.stringify({
                     prompt: input,
                     stream: false,
-                    max_tokens: 512,
+                    max_tokens: 4096,
                     temperature: 0.7,
                 }),
             });

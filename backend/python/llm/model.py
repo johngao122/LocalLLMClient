@@ -10,7 +10,7 @@ class LLMModel:
     def __init__(
         self,
         model_path: str,
-        n_ctx: int = 2048,
+        n_ctx: int = 4096,
         n_threads: int = 4,
         n_gpu_layers: int = 0,
     ):
@@ -41,7 +41,7 @@ class LLMModel:
     def generate(
         self,
         prompt: str,
-        max_tokens: int = 512,
+        max_tokens: int = 4096,
         temperature: float = 0.7,
         top_p: float = 0.95,
         stop: Optional[list[str]] = None,
