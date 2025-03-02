@@ -5,6 +5,16 @@ set "MODEL_NAME=DeepSeek-R1-Distill-Qwen-1.5B-Q8_0"
 set "LLM_CONTEXT_LENGTH=4096"
 set "LLM_THREADS=4"
 
+REM GPU configuration
+echo Detecting GPU...
+where nvidia-smi >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo NVIDIA GPU detected: Enabling CUDA acceleration
+    set "LLAMA_CUDA=1"
+) else (
+    echo No NVIDIA GPU detected: Using CPU only
+)
+
 REM Function to clean up processes
 :cleanup
 echo Cleaning up processes...

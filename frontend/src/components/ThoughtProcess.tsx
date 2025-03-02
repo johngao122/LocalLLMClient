@@ -12,13 +12,13 @@ export const ThoughtProcess = ({ content, duration }: ThoughtProcessProps) => {
         <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-4 p-4 bg-gray-800 text-gray-300 rounded-lg"
+            className="mb-4 p-4 bg-gray-800 text-gray-300 rounded-lg opacity-70"
         >
-            <div className="flex items-center gap-2 mb-2 text-sm text-gray-400">
+            <div className="flex items-center gap-2 mb-2 text-sm text-gray-400 font-medium">
                 <Clock className="w-4 h-4" />
-                <span>Thought for {duration || "..."} seconds</span>
+                <span>Thinking Process ({duration || "..."} seconds)</span>
             </div>
-            <div className="whitespace-pre-wrap">{content}</div>
+            <div className="whitespace-pre-wrap opacity-80">{content}</div>
         </motion.div>
     );
 };
@@ -54,12 +54,21 @@ export const ChatMessageItem = ({
         );
     }
 
-    const content = message.content as ChatMessageContent;
+    // Ensure we have a valid response
+    const content = {
+        ...(message.content as ChatMessageContent),
+        response:
+            (message.content as ChatMessageContent).response ||
+            "No response generated. Please try again.",
+    };
+
     return (
-        <div className="mb-4">
+        <div className="mb-4 space-y-4">
             {content.thought && <ThoughtProcess content={content.thought} />}
-            <div className="bg-gray-200 text-black p-3 rounded-lg max-w-md">
-                {content.response}
+            <div className="border-t border-gray-300 pt-2">
+                <div className="bg-gray-200 text-black p-3 rounded-lg max-w-md">
+                    {content.response}
+                </div>
             </div>
         </div>
     );

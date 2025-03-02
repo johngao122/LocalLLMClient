@@ -114,16 +114,26 @@ const ServerStatus = ({ onStatusChange }: ServerStatusProps) => {
     );
 };
 
-const ChatInterface = () => {
+interface ChatInterfaceProps {
+    sessionId?: string;
+    initialMessages?: ExtendedChatMessage[];
+    onMessagesUpdate?: (messages: ExtendedChatMessage[]) => void;
+}
+
+const ChatInterface = ({
+    sessionId = "default",
+    initialMessages = [],
+    onMessagesUpdate,
+}: ChatInterfaceProps) => {
     const [isServerOnline, setIsServerOnline] = useState(false);
-    const [messages, setMessages] = useState<ExtendedChatMessage[]>([
-        { role: "assistant", content: "Hello! How can I assist you today?" },
-    ]);
+    const [messages, setMessages] =
+        useState<ExtendedChatMessage[]>(initialMessages);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [thoughtStartTime, setThoughtStartTime] = useState<number | null>(
         null
     );
+    const [maxThinkingTime, setMaxThinkingTime] = useState(10); // 10 seconds max thinking time
     const chatRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -132,6 +142,11 @@ const ChatInterface = () => {
             behavior: "smooth",
         });
     }, [messages]);
+
+    // Update parent component when messages change
+    useEffect(() => {
+        onMessagesUpdate?.(messages);
+    }, [messages, onMessagesUpdate]);
 
     const handleSubmit = async (
         e: React.MouseEvent<HTMLButtonElement, MouseEvent>
@@ -159,6 +174,11 @@ const ChatInterface = () => {
         };
         setMessages((prev) => [...prev, placeholderMessage]);
 
+        // Initialize variables for tracking response content
+        let accumulatedThought = "";
+        let accumulatedResponse = "";
+        let isThoughtPhase = true;
+
         try {
             const response = await fetch("http://127.0.0.1:5000/api/generate", {
                 method: "POST",
@@ -169,7 +189,8 @@ const ChatInterface = () => {
                     prompt: input,
                     stream: true,
                     max_tokens: 4096,
-                    temperature: 0.7,
+                    temperature: 0.9,
+                    session_id: sessionId, // Pass the session ID to the backend
                 }),
             });
 
@@ -179,9 +200,6 @@ const ChatInterface = () => {
 
             const reader = response.body?.getReader();
             const decoder = new TextDecoder();
-            let accumulatedThought = "";
-            let accumulatedResponse = "";
-            let isThoughtPhase = true;
 
             while (reader) {
                 const { value, done } = await reader.read();
@@ -201,6 +219,112 @@ const ChatInterface = () => {
                             if (!parsed.choices?.[0]?.text) continue;
 
                             const newText = parsed.choices[0].text;
+                            const finishReason =
+                                parsed.choices[0]?.finish_reason;
+
+                            // If we received a finish_reason, handle it
+                            if (finishReason) {
+                                console.log(
+                                    `Generation finished with reason: ${finishReason}`
+                                );
+
+                                // If we're still in thought phase but received a finish reason,
+                                // force transition to response phase
+                                if (isThoughtPhase) {
+                                    isThoughtPhase = false;
+                                    accumulatedThought +=
+                                        "\n\nGeneration completed.";
+
+                                    // If we have no response yet, create one from the thought
+                                    if (!accumulatedResponse.trim()) {
+                                        accumulatedResponse =
+                                            "Based on my analysis, here's what I found: ";
+
+                                        // Extract key points from thought to form a response
+                                        const thoughtLines = accumulatedThought
+                                            .split("\n")
+                                            .filter(
+                                                (line) => line.trim().length > 0
+                                            );
+
+                                        if (thoughtLines.length > 0) {
+                                            // Take the last few lines as they're likely most relevant
+                                            const relevantThoughts =
+                                                thoughtLines.slice(
+                                                    Math.max(
+                                                        0,
+                                                        thoughtLines.length - 3
+                                                    )
+                                                );
+                                            if (relevantThoughts.length > 0) {
+                                                accumulatedResponse +=
+                                                    relevantThoughts.join(" ");
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // If finish reason is error, add error message
+                                if (finishReason === "error" && newText) {
+                                    accumulatedResponse += `\n\n${newText}`;
+                                }
+
+                                // Handle timeout case
+                                if (finishReason === "timeout") {
+                                    if (isThoughtPhase) {
+                                        isThoughtPhase = false;
+                                        accumulatedThought +=
+                                            "\n\nModel generation timed out.";
+                                    }
+
+                                    if (!accumulatedResponse.trim()) {
+                                        accumulatedResponse =
+                                            "I started analyzing your request, but the generation process took too long and timed out. ";
+
+                                        // Try to extract something useful from the thought process
+                                        if (accumulatedThought.trim()) {
+                                            accumulatedResponse +=
+                                                "Based on my partial analysis: ";
+
+                                            const thoughtLines =
+                                                accumulatedThought
+                                                    .split("\n")
+                                                    .filter(
+                                                        (line) =>
+                                                            line.trim().length >
+                                                            0
+                                                    );
+
+                                            if (thoughtLines.length > 0) {
+                                                // Take the last few lines as they're likely most relevant
+                                                const relevantThoughts =
+                                                    thoughtLines.slice(
+                                                        Math.max(
+                                                            0,
+                                                            thoughtLines.length -
+                                                                3
+                                                        )
+                                                    );
+                                                if (
+                                                    relevantThoughts.length > 0
+                                                ) {
+                                                    accumulatedResponse +=
+                                                        relevantThoughts.join(
+                                                            " "
+                                                        );
+                                                }
+                                            }
+                                        }
+
+                                        accumulatedResponse +=
+                                            "\n\nPlease try again with a simpler query or break your question into smaller parts.";
+                                    } else {
+                                        accumulatedResponse +=
+                                            newText ||
+                                            "\n\n[Generation timed out. The response may be incomplete.]";
+                                    }
+                                }
+                            }
 
                             // Check for thought process completion
                             if (newText.includes("</think>")) {
@@ -216,6 +340,54 @@ const ChatInterface = () => {
                                 // Add content to either thought or response based on phase
                                 if (isThoughtPhase) {
                                     accumulatedThought += newText;
+
+                                    // Check if thinking time has exceeded the maximum
+                                    if (
+                                        thoughtStartTime &&
+                                        (Date.now() - thoughtStartTime) / 1000 >
+                                            maxThinkingTime
+                                    ) {
+                                        // Force transition to response phase
+                                        isThoughtPhase = false;
+                                        accumulatedThought +=
+                                            "\n\nThinking time limit reached.";
+
+                                        // Initialize the response if it's empty
+                                        if (!accumulatedResponse.trim()) {
+                                            accumulatedResponse =
+                                                "Based on my analysis of your request, I can provide the following answer. ";
+
+                                            // Extract key points from the thought process to form a basic response
+                                            const thoughtLines =
+                                                accumulatedThought
+                                                    .split("\n")
+                                                    .filter(
+                                                        (line) =>
+                                                            line.trim().length >
+                                                            0
+                                                    );
+                                            if (thoughtLines.length > 0) {
+                                                // Take the last few lines of thought as they're likely most relevant
+                                                const relevantThoughts =
+                                                    thoughtLines.slice(
+                                                        Math.max(
+                                                            0,
+                                                            thoughtLines.length -
+                                                                3
+                                                        )
+                                                    );
+                                                if (
+                                                    relevantThoughts.length > 0
+                                                ) {
+                                                    accumulatedResponse +=
+                                                        "Here's what I found: " +
+                                                        relevantThoughts.join(
+                                                            " "
+                                                        );
+                                                }
+                                            }
+                                        }
+                                    }
                                 } else {
                                     accumulatedResponse += newText;
                                 }
@@ -248,18 +420,66 @@ const ChatInterface = () => {
             }
 
             reader?.releaseLock();
+
+            // Final check to ensure we have a response
+            if (!accumulatedResponse.trim() && accumulatedThought.trim()) {
+                // If we have thoughts but no response, create a response
+                accumulatedResponse =
+                    "I've analyzed your request but couldn't generate a complete response. Please try again or rephrase your question.";
+
+                // Update the message one last time
+                setMessages((prev) => {
+                    const newMessages = [...prev];
+                    const lastMessage = newMessages[newMessages.length - 1];
+                    if (lastMessage.role === "assistant") {
+                        lastMessage.content = {
+                            thought: accumulatedThought,
+                            response: accumulatedResponse,
+                        } as ChatMessageContent;
+                    }
+                    return newMessages;
+                });
+            }
         } catch (error) {
             console.error("Error:", error);
-            setMessages((prev) => [
-                ...prev.slice(0, -1),
-                {
-                    role: "assistant",
-                    content: {
-                        response:
-                            "I apologize, but I encountered an error generating a response. Please try again.",
+
+            // If we have any accumulated thought or response, preserve it
+            if (accumulatedThought.trim() || accumulatedResponse.trim()) {
+                setMessages((prev) => {
+                    const newMessages = [...prev];
+                    const lastMessage = newMessages[newMessages.length - 1];
+                    if (lastMessage.role === "assistant") {
+                        // If we have a thought but no response, add an error message as response
+                        if (
+                            accumulatedThought.trim() &&
+                            !accumulatedResponse.trim()
+                        ) {
+                            accumulatedResponse =
+                                "I encountered an error while generating a response. Please try again.";
+                        }
+
+                        lastMessage.content = {
+                            thought: accumulatedThought,
+                            response:
+                                accumulatedResponse ||
+                                "I encountered an error while generating a response. Please try again.",
+                        } as ChatMessageContent;
+                    }
+                    return newMessages;
+                });
+            } else {
+                // If we have no accumulated content at all, replace with error message
+                setMessages((prev) => [
+                    ...prev.slice(0, -1),
+                    {
+                        role: "assistant",
+                        content: {
+                            response:
+                                "I apologize, but I encountered an error generating a response. Please try again.",
+                        },
                     },
-                },
-            ]);
+                ]);
+            }
         } finally {
             setIsLoading(false);
             setThoughtStartTime(null);
@@ -277,9 +497,29 @@ const ChatInterface = () => {
 
     return (
         <div className="flex flex-col h-full max-w-4xl mx-auto rounded-lg bg-white shadow-lg">
-            <div className="flex items-center justify-between px-6 py-4 border-b">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b bg-white">
                 <h2 className="text-lg font-semibold">Chat Session</h2>
-                <ServerStatus onStatusChange={setIsServerOnline} />
+                <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-500">
+                            Max Thinking Time:
+                        </span>
+                        <input
+                            type="range"
+                            min="3"
+                            max="30"
+                            value={maxThinkingTime}
+                            onChange={(e) =>
+                                setMaxThinkingTime(parseInt(e.target.value))
+                            }
+                            className="w-24"
+                        />
+                        <span className="text-sm text-gray-500">
+                            {maxThinkingTime}s
+                        </span>
+                    </div>
+                    <ServerStatus onStatusChange={setIsServerOnline} />
+                </div>
             </div>
 
             <ScrollArea ref={chatRef} className="flex-1 p-6 overflow-y-auto">

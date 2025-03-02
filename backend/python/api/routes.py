@@ -47,7 +47,9 @@ def generate():
                         yield f"data: {json.dumps(chunk)}\n\n"
                 except Exception as e:
                     logger.error(f"Stream generation error: {e}", exc_info=True)
-                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                    error_message = str(e)
+                    # Send a properly formatted error chunk that the frontend can handle
+                    yield f"data: {json.dumps({'choices': [{'text': f'Error during generation: {error_message}', 'finish_reason': 'error'}]})}\n\n"
                 finally:
                     yield "data: [DONE]\n\n"
 

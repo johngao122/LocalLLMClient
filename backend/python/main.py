@@ -1,5 +1,6 @@
 import os
 import logging
+import platform
 from flask import Flask
 from flask_cors import CORS
 from python.api.routes import api, init_model
@@ -22,6 +23,17 @@ def create_app():
 
 def main():
     try:
+        # Set environment variables for GPU acceleration based on platform
+        system = platform.system()
+        if system == "Darwin":
+            # For Mac, enable Metal
+            os.environ["LLAMA_METAL"] = "1"
+            logger.info("Enabled Metal for Mac")
+        elif system in ["Windows", "Linux"]:
+            # For Windows/Linux, enable CUDA if requested
+            if os.environ.get("USE_CUDA", "1") == "1":
+                os.environ["LLAMA_CUDA"] = "1"
+                logger.info("Enabled CUDA for NVIDIA GPU")
 
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         model_name = os.environ.get("MODEL_NAME", "DeepSeek-R1-Distill-Qwen")

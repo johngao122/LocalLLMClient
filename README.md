@@ -146,7 +146,20 @@ npm run tauri dev
 
 ## GPU Acceleration
 
-To enable GPU acceleration, modify the `n_gpu_layers` parameter in `model.py`. The default value is -1, which offloads all possible layers to the GPU. Adjust this value based on your GPU's VRAM capacity.
+The application now automatically detects and uses the appropriate GPU acceleration:
+
+-   **On macOS**: Metal is automatically detected and used for GPU acceleration on Apple Silicon and compatible Intel Macs.
+-   **On Windows/Linux**: CUDA is automatically detected and used if an NVIDIA GPU is present.
+
+You can control GPU acceleration with the following environment variables:
+
+| Variable    | Description                                    | Default                |
+| ----------- | ---------------------------------------------- | ---------------------- |
+| LLAMA_METAL | Enable Metal acceleration on macOS             | 1 (on Mac)             |
+| LLAMA_CUDA  | Enable CUDA acceleration for NVIDIA GPUs       | 1 (if NVIDIA detected) |
+| USE_CUDA    | Whether to attempt using CUDA on Windows/Linux | 1                      |
+
+The application will automatically fall back to CPU if no compatible GPU is detected.
 
 ## Building for Desktop
 
@@ -186,11 +199,37 @@ The following features are currently under development:
 -   [x] Local LLM integration
 -   [x] Cross-platform desktop app
 -   [x] Unified run script
--   [ ] Enhanced chat message formatting (need to fix Latex)
+-   [x] Enhanced chat message formatting with LaTeX support(kinda)
 -   [x] Chain of thought reasoning visualization
 -   [x] Code syntax highlighting in messages
+-   [ ] Model fine tuning(right now if it has too much time to think, response will be empty)
 -   [ ] Support for multiple concurrent chat sessions
 -   [ ] Additional chat features and improvements
+-   [ ] Support for multiple models
+
+## LaTeX Support
+
+The chat interface supports rendering of LaTeX mathematical expressions:
+
+-   Use `$...$` for inline math expressions (e.g., $E = mc^2$)
+-   Use `$$...$$` for block/display math expressions:
+
+```
+$$
+P = \begin{pmatrix}
+0.7 & 0.3 \\
+0.4 & 0.6
+\end{pmatrix}
+$$
+```
+
+The application supports common LaTeX commands and environments, including:
+
+-   Mathematical symbols and operators
+-   Matrices and arrays
+-   Fractions, integrals, and summations
+-   Greek letters and special symbols
+-   Aligned equations and multi-line expressions
 
 ## Troubleshooting
 
